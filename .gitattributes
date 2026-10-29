@@ -1,0 +1,11 @@
+# Keep line endings as LF in the repository on every OS.
+# Prevents Windows CRLF from breaking shell scripts, Docker builds and diffs.
+* text=auto eol=lf
+
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+*.png binary
+*.jpg binary
+*.parquet binary

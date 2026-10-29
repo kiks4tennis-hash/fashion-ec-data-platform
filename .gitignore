@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Secrets and credentials (never commit)
+.env
+*.pem
+*.key
+*credentials*.json
+service-account*.json
+
+# Local data
+data/
+*.parquet
+*.csv
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+profiles.yml
+
+# Airflow
+airflow/logs/
+airflow/airflow.db
+airflow/.env
+
+# Terraform
+infra/**/.terraform/
+*.tfstate
+*.tfstate.*
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
