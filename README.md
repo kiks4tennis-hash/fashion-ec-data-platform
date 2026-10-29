@@ -61,7 +61,8 @@ flowchart LR
 ├── spark/              # PySpark jobs (Phase 4)
 ├── infra/              # Infrastructure as code (Phase 5)
 ├── docs/
-│   └── adr/            # Architecture Decision Records
+│   ├── adr/            # Architecture Decision Records
+│   └── data-model.md   # Source tables and intentional data quirks
 ├── .github/workflows/  # CI/CD (added in Phase 1, extended later)
 ├── pyproject.toml      # Package, ruff and pytest configuration
 └── tasks.py            # Cross-platform developer commands (install, lint, test, ...)
@@ -94,6 +95,24 @@ python tasks.py check
 
 Other commands: `python tasks.py format`, `python tasks.py test`, `python tasks.py clean`.
 
+## Generate synthetic data
+
+```bash
+python -m fashion_ec.generate --out data/raw
+```
+
+The default is about 20,000 orders, 220,000 clickstream events and 150,000 inventory rows
+(a few seconds). The seed is fixed, so the same options always give the same data.
+Use `--help` for all options, for example a bigger clickstream for the Spark phase:
+
+```bash
+python -m fashion_ec.generate --out data/raw --days 365 --orders 200000 --sessions 2000000
+```
+
+The tables and the deliberate "real-world" quirks (UTC vs JST, cancellations, censored
+returns, no session id) are described in [`docs/data-model.md`](docs/data-model.md).
+Output goes to `data/`, which is git-ignored.
+
 ## Windows notes
 
 - **Airflow** does not run natively on Windows. From Phase 3, run it with
@@ -121,7 +140,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 ## Roadmap
 
 - [x] **Phase 1** — Repository foundation, tooling, ADRs
-- [ ] **Phase 1** — Synthetic data generator with tests
+- [x] **Phase 1** — Synthetic data generator with tests
 - [ ] **Phase 1** — CI: lint and tests on every PR
 - [ ] **Phase 2** — dbt models, tests, snapshots
 - [ ] **Phase 3** — Airflow DAGs with backfill and retries
