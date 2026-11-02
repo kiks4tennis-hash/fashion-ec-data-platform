@@ -10,10 +10,13 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
+    "numpy>=1.26",
     "pandas>=2.2",
-    "faker>=25.0",
     "pyarrow>=16.0",
 ]
+
+[project.scripts]
+fashion-ec-generate = "fashion_ec.generate:main"
 
 [project.optional-dependencies]
 dev = [
