@@ -29,7 +29,10 @@ erDiagram
 | `clickstream` | one row per web event | `event_id` | `page_view`, `add_to_cart`, `purchase`. No session id. |
 
 Files are written as Parquet under `data/raw/<table>/`. `clickstream` is partitioned by UTC
-event date (`event_date=YYYY-MM-DD`).
+event date (`event_date=YYYY-MM-DD`). Column types are defined in
+`src/fashion_ec/schemas.py` and are the same in Parquet and BigQuery: timestamps are UTC
+`TIMESTAMP`, dates are `DATE`. In BigQuery, `clickstream` is partitioned by day on
+`event_ts` and clustered by `event_type, anonymous_id`.
 
 ## Deliberate "real-world" properties
 

@@ -13,10 +13,13 @@ dependencies = [
     "numpy>=1.26",
     "pandas>=2.2",
     "pyarrow>=16.0",
+    "google-cloud-bigquery>=3.25",
+    "google-cloud-storage>=2.18",
 ]
 
 [project.scripts]
 fashion-ec-generate = "fashion_ec.generate:main"
+fashion-ec-load = "fashion_ec.load:main"
 
 [project.optional-dependencies]
 dev = [

@@ -64,7 +64,8 @@ flowchart LR
 ├── infra/              # Infrastructure as code (Phase 5)
 ├── docs/
 │   ├── adr/            # Architecture Decision Records
-│   └── data-model.md   # Source tables and intentional data quirks
+│   ├── data-model.md   # Source tables and intentional data quirks
+│   └── gcp-setup.md    # One-time GCP setup (auth, budget alert, bucket)
 ├── .github/workflows/  # CI/CD (added in Phase 1, extended later)
 ├── pyproject.toml      # Package, ruff and pytest configuration
 └── tasks.py            # Cross-platform developer commands (install, lint, test, ...)
@@ -115,6 +116,19 @@ The tables and the deliberate "real-world" quirks (UTC vs JST, cancellations, ce
 returns, no session id) are described in [`docs/data-model.md`](docs/data-model.md).
 Output goes to `data/`, which is git-ignored.
 
+## Load into BigQuery
+
+One-time GCP setup (CLI sign-in, budget alert, bucket) is in
+[`docs/gcp-setup.md`](docs/gcp-setup.md). Then:
+
+```bash
+python -m fashion_ec.load --project YOUR_PROJECT_ID --dry-run   # plan only
+python -m fashion_ec.load --project YOUR_PROJECT_ID             # GCS -> BigQuery `raw`
+```
+
+The loader is idempotent and verifies row counts after every table. Column types, partitioning
+and clustering are defined once in `src/fashion_ec/schemas.py`.
+
 ## Windows notes
 
 - **Airflow** does not run natively on Windows. From Phase 3, run it with
@@ -138,13 +152,15 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 | ADR | Decision |
 |---|---|
 | [0001](docs/adr/0001-elt-with-dbt-on-bigquery.md) | Use ELT with dbt on BigQuery |
+| [0002](docs/adr/0002-gcs-staging-and-load-jobs.md) | Stage files in GCS and ingest with BigQuery load jobs |
 
 ## Roadmap
 
 - [x] **Phase 1** — Repository foundation, tooling, ADRs
 - [x] **Phase 1** — Synthetic data generator with tests
 - [x] **Phase 1** — CI: lint and tests on every PR (Linux and Windows, Python 3.11 and 3.12)
-- [ ] **Phase 2** — dbt models, tests, snapshots
+- [x] **Phase 2a** — Load raw data into BigQuery through GCS
+- [ ] **Phase 2b** — dbt models, tests, snapshots
 - [ ] **Phase 3** — Airflow DAGs with backfill and retries
 - [ ] **Phase 4** — Spark clickstream processing and cost comparison with BigQuery SQL
 - [ ] **Phase 5** — CD, dashboard, demo video

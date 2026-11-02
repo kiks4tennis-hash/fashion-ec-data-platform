@@ -30,6 +30,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+
+from fashion_ec.schemas import TABLES, TableSpec
 
 JST_OFFSET = pd.Timedelta(hours=9)
 
@@ -86,14 +90,6 @@ CATEGORY_SPECS: dict[str, CategorySpec] = {
     "dresses": CategorySpec(("XS", "S", "M", "L"), (8_000, 25_000), 0.28, 0.13),
     "shoes": CategorySpec(("23.0", "24.0", "25.0", "26.0", "27.0"), (8_000, 22_000), 0.25, 0.10),
     "accessories": CategorySpec(("F",), (2_000, 8_000), 0.05, 0.15),
-}
-
-# Columns written as DATE (the rest of the datetime columns stay TIMESTAMP).
-DATE_COLUMNS = {
-    "products": ["launch_date"],
-    "price_changes": ["effective_date"],
-    "customers": ["signup_date"],
-    "inventory_snapshots": ["snapshot_date"],
 }
 
 
@@ -551,12 +547,18 @@ def write_tables(tables: dict[str, pd.DataFrame], out_dir: str | Path) -> None:
 
     The clickstream is partitioned by UTC event date (``event_date=YYYY-MM-DD``), the layout
     BigQuery and Spark expect for a large event table. Existing table folders are replaced.
+    Column types follow ``fashion_ec.schemas`` exactly (explicit Arrow schema): DATE columns
+    are written as dates and TIMESTAMP columns as UTC microsecond timestamps.
     """
     out = Path(out_dir)
     for name, frame in tables.items():
         frame = frame.copy()
-        for column in DATE_COLUMNS.get(name, []):
+        spec = TABLES[name]
+        for column in spec.columns_of_type("DATE"):
             frame[column] = frame[column].dt.date
+        for column in spec.columns_of_type("TIMESTAMP"):
+            # Truncate nanoseconds to microseconds (BigQuery precision) before the Arrow cast.
+            frame[column] = frame[column].dt.tz_localize("UTC").astype("datetime64[us, UTC]")
         target = out / name
         if target.exists():
             shutil.rmtree(target)
@@ -566,9 +568,14 @@ def write_tables(tables: dict[str, pd.DataFrame], out_dir: str | Path) -> None:
             for day, part in frame.groupby(event_date):
                 partition = target / f"event_date={day.isoformat()}"
                 partition.mkdir()
-                part.to_parquet(partition / "part-0000.parquet", index=False)
+                _write_parquet(part, spec, partition / "part-0000.parquet")
         else:
-            frame.to_parquet(target / f"{name}.parquet", index=False)
+            _write_parquet(frame, spec, target / f"{name}.parquet")
+
+
+def _write_parquet(frame: pd.DataFrame, spec: TableSpec, path: Path) -> None:
+    table = pa.Table.from_pandas(frame, schema=spec.arrow_schema, preserve_index=False)
+    pq.write_table(table, path)
 
 
 def build_parser() -> argparse.ArgumentParser:
