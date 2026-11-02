@@ -1,5 +1,7 @@
 # Fashion EC Data Platform
 
+[![CI](https://github.com/kiks4tennis-hash/fashion-ec-data-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/kiks4tennis-hash/fashion-ec-data-platform/actions/workflows/ci.yml)
+
 An end-to-end ELT pipeline for a fashion e-commerce business, built on synthetic data.
 It covers orders, returns, inventory snapshots, price history and clickstream events,
 and is designed the way a production data platform would be: tested, reviewed,
@@ -141,7 +143,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 
 - [x] **Phase 1** — Repository foundation, tooling, ADRs
 - [x] **Phase 1** — Synthetic data generator with tests
-- [ ] **Phase 1** — CI: lint and tests on every PR
+- [x] **Phase 1** — CI: lint and tests on every PR (Linux and Windows, Python 3.11 and 3.12)
 - [ ] **Phase 2** — dbt models, tests, snapshots
 - [ ] **Phase 3** — Airflow DAGs with backfill and retries
 - [ ] **Phase 4** — Spark clickstream processing and cost comparison with BigQuery SQL

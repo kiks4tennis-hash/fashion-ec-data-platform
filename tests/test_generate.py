@@ -6,6 +6,7 @@ from fashion_ec.generate import (
     JST_OFFSET,
     GenerationConfig,
     generate_all,
+    main,
     write_tables,
 )
 
@@ -266,3 +267,34 @@ def test_write_tables_replaces_previous_output(tables, tmp_path):
     stale.mkdir()
     write_tables(tables, tmp_path)
     assert not stale.exists()
+
+
+def test_cli_writes_all_tables(tmp_path, capsys):
+    main(
+        [
+            "--out",
+            str(tmp_path),
+            "--days",
+            "10",
+            "--styles",
+            "5",
+            "--customers",
+            "50",
+            "--orders",
+            "100",
+            "--sessions",
+            "200",
+        ]
+    )
+    written = {p.name for p in tmp_path.iterdir()}
+    assert written == {
+        "products",
+        "price_changes",
+        "customers",
+        "orders",
+        "order_items",
+        "returns",
+        "inventory_snapshots",
+        "clickstream",
+    }
+    assert "orders" in capsys.readouterr().out
