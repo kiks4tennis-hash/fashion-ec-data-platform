@@ -7,6 +7,19 @@ Expected cost: BigQuery's free tier covers this project (10 GiB storage and 1 Ti
 per month). Cloud Storage in `asia-northeast1` is not free-tier eligible, but the data is a
 few tens of MB, so the cost is negligible. **Still set a budget alert first (step 2).**
 
+## Pick a mode
+
+| | With a billing account | BigQuery sandbox (no billing account) |
+|---|---|---|
+| Needs | Billing enabled on the project | Only a Google account and a project |
+| Path | local Parquet -> GCS -> BigQuery | local Parquet -> BigQuery |
+| Steps to follow | 1, 2, 3, 4, 5 | 1, then [Sandbox mode](#sandbox-mode-no-billing-account) |
+| Load command | `fashion_ec.load` | `fashion_ec.load --sandbox` |
+| Good for | everything, including Spark on Dataproc | Phases 2-3 (loading, dbt, Airflow) |
+
+If the console says "You cannot create a budget on a closed account", the billing account
+attached to your project is closed. Either attach an open billing account or use the sandbox.
+
 ## 1. Install the Google Cloud CLI and sign in
 
 ```powershell
@@ -72,6 +85,43 @@ GROUP BY status;
 Check that `clickstream` is partitioned (table details -> "Partitioned by: DAY on event_ts")
 and that `order_ts` shows as `TIMESTAMP`, not `DATETIME`.
 
+## Sandbox mode (no billing account)
+
+The BigQuery sandbox lets you use BigQuery without a billing account, so nothing can be
+charged and no budget alert is needed. Do step 1 (sign in), skip steps 2 and 3, then:
+
+```powershell
+python -m fashion_ec.generate --out data/raw
+python -m fashion_ec.load --project YOUR_PROJECT_ID --sandbox --dry-run
+python -m fashion_ec.load --project YOUR_PROJECT_ID --sandbox
+```
+
+What `--sandbox` changes: Cloud Storage is not used (it needs billing), the files of each
+table are merged and loaded directly, and tables are **not** date-partitioned (clustering is
+kept). Everything else (explicit schemas, full replacement, row-count check) is the same.
+
+Limits to know about. These come from third-party summaries of the sandbox page, so check
+the [official sandbox documentation](https://cloud.google.com/bigquery/docs/sandbox) too:
+
+- **Tables and partitions expire after 60 days.** Re-run the loader to recreate them; this is
+  also why partitioning is off: the synthetic data covers past dates, and partitions are said
+  to expire by their date.
+- **10 GB storage and 1 TB of queries per month.** This project uses well under 1 GB.
+- **DML and streaming are reported as unsupported.** dbt `table` and `view` models use DDL
+  (`CREATE TABLE AS SELECT`), but `incremental` (merge) and `snapshot` rely on DML. Run the
+  check below before the dbt phase; the result decides how Phase 2 is built.
+- Dataproc (Spark) and Cloud Storage need billing, so Phase 4 needs a billing account.
+
+Check whether DML works in your project (it creates and removes a tiny table):
+
+```powershell
+bq query --use_legacy_sql=false --project_id=YOUR_PROJECT_ID "CREATE OR REPLACE TABLE raw.dml_check AS SELECT 1 AS x"
+bq query --use_legacy_sql=false --project_id=YOUR_PROJECT_ID "INSERT INTO raw.dml_check (x) VALUES (2)"
+bq rm -f -t YOUR_PROJECT_ID:raw.dml_check
+```
+
+If the second command fails with a message about DML or billing, DML is not available.
+
 ## Cleaning up
 
 ```powershell
@@ -87,4 +137,6 @@ gcloud storage rm -r gs://YOUR_PROJECT_ID-fashion-ec
 | `403 ... does not have storage.objects.create` | Your account lacks access to the bucket; use the project owner account for this personal project. |
 | `404 ... bucket does not exist` | Create the bucket (step 3) or pass `--bucket`. |
 | `Cannot read and write in different locations` | The bucket and the dataset must be in the same location (`asia-northeast1`). |
+| `... does not match the expected schema ... re-run fashion_ec.generate` | `data/raw` was written by an older version of the generator. Regenerate it. |
+| `Billing must be enabled` / bucket creation fails | No active billing account: use `--sandbox`. |
 | Row count mismatch error | Do not ignore it: re-run, and compare the file count in `--dry-run` with GCS. |

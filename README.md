@@ -126,6 +126,9 @@ python -m fashion_ec.load --project YOUR_PROJECT_ID --dry-run   # plan only
 python -m fashion_ec.load --project YOUR_PROJECT_ID             # GCS -> BigQuery `raw`
 ```
 
+No billing account? Add `--sandbox` to load the files directly (no GCS, no date
+partitioning); see "Sandbox mode" in the setup guide.
+
 The loader is idempotent and verifies row counts after every table. Column types, partitioning
 and clustering are defined once in `src/fashion_ec/schemas.py`.
 
@@ -153,6 +156,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 |---|---|
 | [0001](docs/adr/0001-elt-with-dbt-on-bigquery.md) | Use ELT with dbt on BigQuery |
 | [0002](docs/adr/0002-gcs-staging-and-load-jobs.md) | Stage files in GCS and ingest with BigQuery load jobs |
+| [0003](docs/adr/0003-sandbox-load-path.md) | Add a direct-load path for the BigQuery sandbox (no billing) |
 
 ## Roadmap
 
