@@ -1,0 +1,257 @@
+version: 2
+
+# Conventions: column names say their unit (_jpy, _units); UTC timestamps end in _at;
+# Japan-time business dates end in _on_jst.
+
+models:
+  - name: stg_products
+    description: One row per SKU (style x color x size).
+    columns:
+      - name: sku
+        description: Unique SKU code, `<style>-<color>-<size>`.
+        data_tests: [unique, not_null]
+      - name: style_id
+        description: Groups the color and size variants of one design.
+        data_tests: [not_null]
+      - name: category
+        description: Product category.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [tops, bottoms, outerwear, dresses, shoes, accessories]
+      - name: color
+        description: Color name.
+      - name: size
+        description: Size label (S, M, ... or shoe size). `F` means one size.
+        data_tests: [not_null]
+      - name: season
+        description: Season of launch, for example `2026SS`.
+      - name: launch_date
+        description: First day the SKU can be sold.
+        data_tests: [not_null]
+      - name: base_price_jpy
+        description: Launch list price in yen.
+        data_tests: [is_positive]
+      - name: initial_stock_units
+        description: Units in stock on the SKU's first day in the data.
+        data_tests: [is_positive]
+
+  - name: stg_price_changes
+    description: Price history per style (launch price and markdowns).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [style_id, effective_from]
+    columns:
+      - name: style_id
+        description: Style the price applies to (all sizes and colors).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: style_id
+      - name: effective_from
+        description: First day the price applies.
+        data_tests: [not_null]
+      - name: price_jpy
+        description: List price in yen from this date.
+        data_tests: [is_positive]
+      - name: change_reason
+        description: Why the price changed.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [launch, markdown]
+
+  - name: stg_customers
+    description: One row per customer.
+    columns:
+      - name: customer_id
+        description: Unique customer id.
+        data_tests: [unique, not_null]
+      - name: signup_date
+        description: Day the customer registered.
+        data_tests: [not_null]
+      - name: region
+        description: Home region in Japan.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [Kanto, Kansai, Chubu, Kyushu, Tohoku, Hokkaido, Other]
+      - name: acquisition_channel
+        description: Marketing channel that brought the customer.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [organic, paid_search, social, email, referral]
+
+  - name: stg_orders
+    description: One row per order. Cancelled orders are kept; filter on `is_cancelled`.
+    columns:
+      - name: order_id
+        description: Unique order id.
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: Customer who placed the order.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: ordered_at
+        description: When the order was placed (UTC).
+        data_tests: [not_null]
+      - name: ordered_on_jst
+        description: Business date of the order in Japan time.
+        data_tests: [not_null]
+      - name: status
+        description: Order status.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [completed, cancelled]
+      - name: is_cancelled
+        description: True when the order was cancelled.
+        data_tests: [not_null]
+      - name: payment_method
+        description: How the customer paid.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [credit_card, cash_on_delivery, convenience_store, e_wallet]
+      - name: shipping_fee_jpy
+        description: Shipping fee in yen (0 above the free-shipping threshold).
+        data_tests: [is_non_negative]
+
+  - name: stg_order_items
+    description: One row per SKU on an order.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [order_id, sku]
+    columns:
+      - name: order_item_id
+        description: Unique order line id.
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: Order the line belongs to.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_orders')
+                field: order_id
+      - name: sku
+        description: Product sold.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: sku
+      - name: quantity
+        description: Units sold on the line.
+        data_tests: [is_positive]
+      - name: unit_price_jpy
+        description: List price in yen on the order date.
+        data_tests: [is_positive]
+
+  - name: stg_returns
+    description: One row per returned order line (full refund).
+    columns:
+      - name: return_id
+        description: Unique return id.
+        data_tests: [unique, not_null]
+      - name: order_item_id
+        description: Returned order line. A line is returned at most once.
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_order_items')
+                field: order_item_id
+      - name: returned_at
+        description: When the return was registered (UTC).
+        data_tests: [not_null]
+      - name: returned_on_jst
+        description: Business date of the return in Japan time.
+        data_tests: [not_null]
+      - name: return_reason
+        description: Reason given by the customer.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [size_too_small, size_too_large, not_as_expected, defective, changed_mind]
+      - name: refund_amount_jpy
+        description: Refunded amount in yen.
+        data_tests: [is_positive]
+
+  - name: stg_inventory_snapshots
+    description: End-of-day on-hand units per SKU and day.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [snapshot_date, sku]
+    columns:
+      - name: snapshot_date
+        description: Day of the snapshot.
+        data_tests: [not_null]
+      - name: sku
+        description: Product counted.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: sku
+      - name: on_hand_units
+        description: Units in stock at the end of the day.
+        data_tests: [not_null, is_non_negative]
+
+  - name: stg_clickstream
+    description: >
+      Raw web events. There is no session id; sessions must be derived from gaps between
+      events of the same visitor. Only part of the traffic is linked to a customer.
+    columns:
+      - name: event_id
+        description: Unique event id.
+        data_tests: [unique, not_null]
+      - name: event_at
+        description: When the event happened (UTC).
+        data_tests: [not_null]
+      - name: event_on_jst
+        description: Business date of the event in Japan time.
+        data_tests: [not_null]
+      - name: anonymous_id
+        description: Browser/device id, always present.
+        data_tests: [not_null]
+      - name: customer_id
+        description: Customer id when the visitor was logged in, otherwise null.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_customers')
+                field: customer_id
+      - name: event_type
+        description: Funnel step.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [page_view, add_to_cart, purchase]
+      - name: sku
+        description: Product the event is about.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: sku
+      - name: device_type
+        description: Device class.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [mobile, desktop, tablet]

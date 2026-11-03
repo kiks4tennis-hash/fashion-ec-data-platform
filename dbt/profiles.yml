@@ -1,0 +1,19 @@
+# Connection profile. It contains no secrets: authentication uses Application Default
+# Credentials (`gcloud auth application-default login`), and the project comes from the
+# environment. Use it with `--profiles-dir .` from this folder.
+fashion_ec:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      # dbt builds "<dataset>_staging", "<dataset>_marts", ... Use another value (for example
+      # ci_pr_12) to keep CI runs and experiments away from your main dataset.
+      dataset: "{{ env_var('DBT_DATASET', 'analytics') }}"
+      location: "{{ env_var('BQ_LOCATION', 'asia-northeast1') }}"
+      threads: 4
+      priority: interactive
+      job_execution_timeout_seconds: 300
+      # Safety net: a query that would bill more than 1 GB fails instead of running.
+      maximum_bytes_billed: 1000000000
