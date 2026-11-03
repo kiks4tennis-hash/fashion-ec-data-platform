@@ -2,7 +2,12 @@
 
     local Parquet  ->  gs://<bucket>/raw/<table>/...  ->  BigQuery <project>.<dataset>.<table>
 
-Design notes (see docs/adr/0002-gcs-staging-and-load-jobs.md):
+Without a billing account (BigQuery sandbox) Cloud Storage is not available. ``--sandbox``
+loads the local files straight into BigQuery instead, without date partitioning:
+
+    local Parquet  ->  (merged into one file per table)  ->  BigQuery <project>.<dataset>.<table>
+
+Design notes (see docs/adr/0002-gcs-staging-and-load-jobs.md and 0003-sandbox-load-path.md):
 
 * Load jobs are free, unlike streaming inserts, and read straight from GCS.
 * Schemas are explicit (``fashion_ec.schemas``), never auto-detected.
@@ -14,16 +19,19 @@ Design notes (see docs/adr/0002-gcs-staging-and-load-jobs.md):
 Usage:
     python -m fashion_ec.load --project my-gcp-project --dry-run
     python -m fashion_ec.load --project my-gcp-project
+    python -m fashion_ec.load --project my-gcp-project --sandbox      # no billing account
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 from google.cloud import bigquery, storage
 
@@ -88,6 +96,38 @@ def local_files(data_dir: Path, table: str) -> list[Path]:
     return files
 
 
+def validate_files(spec: TableSpec, files: list[Path]) -> None:
+    """Fail early, with a clear message, if the files do not match the table schema.
+
+    Files written by an older generator (timezone-less timestamps, different columns) would
+    otherwise fail later with a confusing BigQuery error, or load with the wrong types.
+    ``large_string`` is accepted for ``string``: BigQuery reads both as STRING.
+    """
+    expected = spec.arrow_schema
+    for path in files:
+        actual = pq.read_schema(path)
+        problems = [
+            f"{field.name}: expected {field.type}, found "
+            f"{actual.field(field.name).type if field.name in actual.names else 'missing'}"
+            for field in expected
+            if field.name not in actual.names
+            or not (
+                actual.field(field.name).type == field.type
+                or (
+                    pa.types.is_string(field.type)
+                    and pa.types.is_large_string(actual.field(field.name).type)
+                )
+            )
+        ]
+        if problems or len(actual.names) != len(expected.names):
+            detail = "; ".join(problems) or "unexpected extra columns"
+            raise LoadError(
+                f"{spec.name}: {path.name} does not match the expected schema ({detail}). "
+                "It was probably written by an older version: re-run "
+                "`python -m fashion_ec.generate` and try again."
+            )
+
+
 def count_rows(files: list[Path]) -> int:
     return sum(pq.ParquetFile(f).metadata.num_rows for f in files)
 
@@ -105,14 +145,14 @@ def upload_table(bucket: storage.Bucket, settings: Settings, data_dir: Path, tab
     return len(files)
 
 
-def build_job_config(spec: TableSpec) -> bigquery.LoadJobConfig:
+def build_job_config(spec: TableSpec, partitioned: bool = True) -> bigquery.LoadJobConfig:
     config = bigquery.LoadJobConfig(
         source_format=bigquery.SourceFormat.PARQUET,
         schema=[bigquery.SchemaField(name, kind) for name, kind in spec.columns],
         write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
         create_disposition=bigquery.CreateDisposition.CREATE_IF_NEEDED,
     )
-    if spec.partition_field:
+    if spec.partition_field and partitioned:
         config.time_partitioning = bigquery.TimePartitioning(
             type_=bigquery.TimePartitioningType.DAY, field=spec.partition_field
         )
@@ -137,19 +177,59 @@ def load_table(
         job_config=build_job_config(spec),
         location=settings.location,
     )
+    return _verified_rows(job, spec.name, expected_rows)
+
+
+def _verified_rows(job: bigquery.LoadJob, table: str, expected_rows: int) -> int:
     job.result()
     if job.output_rows != expected_rows:
         raise LoadError(
-            f"{spec.name}: loaded {job.output_rows} rows but the Parquet files have {expected_rows}"
+            f"{table}: loaded {job.output_rows} rows but the Parquet files have {expected_rows}"
         )
     return job.output_rows
 
 
-def plan(settings: Settings, data_dir: Path, tables: list[str]) -> list[str]:
+def merge_parquet(files: list[Path], destination: Path, schema: pa.Schema) -> Path:
+    """Concatenate Parquet files into one, one file at a time (memory stays small).
+
+    The generator already writes every file with the table's exact schema, so rows are copied
+    unchanged. One file means one load job instead of one per day partition.
+    """
+    with pq.ParquetWriter(destination, schema) as writer:
+        for path in files:
+            writer.write_table(pq.read_table(path).cast(schema))
+    return destination
+
+
+def load_table_from_local(
+    client: bigquery.Client,
+    settings: Settings,
+    spec: TableSpec,
+    files: list[Path],
+    work_dir: Path,
+) -> int:
+    """Sandbox path: load local Parquet directly (no GCS, no date partitioning)."""
+    expected = count_rows(files)
+    source = files[0] if len(files) == 1 else work_dir / f"{spec.name}.parquet"
+    if len(files) > 1:
+        merge_parquet(files, source, spec.arrow_schema)
+    with source.open("rb") as handle:
+        job = client.load_table_from_file(
+            handle,
+            settings.table_id(spec.name),
+            job_config=build_job_config(spec, partitioned=False),
+            location=settings.location,
+        )
+        return _verified_rows(job, spec.name, expected)
+
+
+def plan(settings: Settings, data_dir: Path, tables: list[str], sandbox: bool = False) -> list[str]:
     lines = [
         f"project   : {settings.project_id}",
         f"location  : {settings.location}",
-        f"bucket    : gs://{settings.bucket}/{settings.prefix}/",
+        "mode      : sandbox (direct load, no GCS, no date partitioning)"
+        if sandbox
+        else f"mode      : GCS staging at gs://{settings.bucket}/{settings.prefix}/",
         f"dataset   : {settings.dataset}",
         "",
     ]
@@ -168,14 +248,31 @@ def run(
     tables: list[str],
     storage_client: storage.Client | None = None,
     bq_client: bigquery.Client | None = None,
+    sandbox: bool = False,
 ) -> dict[str, int]:
-    """Upload and load the given tables. Returns loaded row counts per table."""
-    storage_client = storage_client or storage.Client(project=settings.project_id)
+    """Load the given tables. Returns loaded row counts per table.
+
+    With ``sandbox=True`` nothing touches Cloud Storage (it needs a billing account).
+    """
+    for name in tables:  # validate all files first: nothing is uploaded if any file is stale
+        validate_files(TABLES[name], local_files(data_dir, name))
+
     bq_client = bq_client or bigquery.Client(project=settings.project_id)
-    bucket = storage_client.bucket(settings.bucket)
     ensure_dataset(bq_client, settings)
 
     loaded: dict[str, int] = {}
+    if sandbox:
+        with tempfile.TemporaryDirectory() as work:
+            for name in tables:
+                files = local_files(data_dir, name)
+                loaded[name] = load_table_from_local(
+                    bq_client, settings, TABLES[name], files, Path(work)
+                )
+                print(f"{name:<22}{loaded[name]:>12,} rows  (loaded from {len(files)} file(s))")
+        return loaded
+
+    storage_client = storage_client or storage.Client(project=settings.project_id)
+    bucket = storage_client.bucket(settings.bucket)
     for name in tables:
         expected = count_rows(local_files(data_dir, name))
         n_files = upload_table(bucket, settings, data_dir, name)
@@ -194,6 +291,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset", help=f"BigQuery dataset (default {DEFAULT_DATASET})")
     parser.add_argument("--data-dir", default="data/raw", help="generated data (default data/raw)")
     parser.add_argument("--tables", nargs="+", choices=list(TABLES), help="default: all tables")
+    parser.add_argument(
+        "--sandbox",
+        action="store_true",
+        help="no billing account: load local files directly, skip GCS and date partitioning",
+    )
     parser.add_argument("--dry-run", action="store_true", help="show the plan, touch nothing")
     return parser
 
@@ -205,9 +307,9 @@ def main(argv: list[str] | None = None) -> None:
     tables = args.tables or list(TABLES)
 
     if args.dry_run:
-        print("\n".join(plan(settings, data_dir, tables)))
+        print("\n".join(plan(settings, data_dir, tables, args.sandbox)))
         return
-    run(settings, data_dir, tables)
+    run(settings, data_dir, tables, sandbox=args.sandbox)
     print(f"\nDone. Query it: SELECT COUNT(*) FROM `{settings.table_id('orders')}`")
 
 
