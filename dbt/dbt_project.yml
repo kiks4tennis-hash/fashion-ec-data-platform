@@ -1,0 +1,17 @@
+name: fashion_ec
+version: "0.1.0"
+config-version: 2
+profile: fashion_ec
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  fashion_ec:
+    # staging: one model per raw table, renames and type-safe cleanup only, no joins.
+    # Views are cheap and always current. Built into the dataset "<DBT_DATASET>_staging".
+    staging:
+      +materialized: view
+      +schema: staging

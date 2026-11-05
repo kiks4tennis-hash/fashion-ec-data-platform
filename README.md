@@ -58,13 +58,14 @@ flowchart LR
 .
 ├── src/fashion_ec/     # Python package: data generation, ingestion, utilities
 ├── tests/              # pytest tests
-├── dbt/                # dbt project (Phase 2)
+├── dbt/                # dbt project: sources, staging models, tests
 ├── airflow/            # DAGs and Airflow config (Phase 3)
 ├── spark/              # PySpark jobs (Phase 4)
 ├── infra/              # Infrastructure as code (Phase 5)
 ├── docs/
 │   ├── adr/            # Architecture Decision Records
 │   ├── data-model.md   # Source tables and intentional data quirks
+│   ├── dbt.md          # Running and extending the dbt project
 │   └── gcp-setup.md    # One-time GCP setup (auth, budget alert, bucket)
 ├── .github/workflows/  # CI/CD (added in Phase 1, extended later)
 ├── pyproject.toml      # Package, ruff and pytest configuration
@@ -132,6 +133,19 @@ partitioning); see "Sandbox mode" in the setup guide.
 The loader is idempotent and verifies row counts after every table. Column types, partitioning
 and clustering are defined once in `src/fashion_ec/schemas.py`.
 
+## Transform with dbt
+
+The `dbt/` project turns the raw tables into tested, documented models. Layer 1 (staging:
+one view per raw table, renamed columns, Japan-time business dates, 68 data tests) is in
+place; intermediate models and marts come next. Details and run instructions:
+[`docs/dbt.md`](docs/dbt.md).
+
+```powershell
+$env:GCP_PROJECT_ID = "YOUR_PROJECT_ID"
+cd dbt
+dbt build --profiles-dir .
+```
+
 ## Windows notes
 
 - **Airflow** does not run natively on Windows. From Phase 3, run it with
@@ -157,6 +171,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 | [0001](docs/adr/0001-elt-with-dbt-on-bigquery.md) | Use ELT with dbt on BigQuery |
 | [0002](docs/adr/0002-gcs-staging-and-load-jobs.md) | Stage files in GCS and ingest with BigQuery load jobs |
 | [0003](docs/adr/0003-sandbox-load-path.md) | Add a direct-load path for the BigQuery sandbox (no billing) |
+| [0004](docs/adr/0004-dbt-staging-conventions.md) | dbt staging conventions and checks that run without a warehouse |
 
 ## Roadmap
 
@@ -164,7 +179,8 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 - [x] **Phase 1** — Synthetic data generator with tests
 - [x] **Phase 1** — CI: lint and tests on every PR (Linux and Windows, Python 3.11 and 3.12)
 - [x] **Phase 2a** — Load raw data into BigQuery through GCS
-- [ ] **Phase 2b** — dbt models, tests, snapshots
+- [x] **Phase 2b-1** — dbt staging layer, tests, static checks in CI
+- [ ] **Phase 2b-2** — dbt intermediate models, marts, price-history snapshot
 - [ ] **Phase 3** — Airflow DAGs with backfill and retries
 - [ ] **Phase 4** — Spark clickstream processing and cost comparison with BigQuery SQL
 - [ ] **Phase 5** — CD, dashboard, demo video

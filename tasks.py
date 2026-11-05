@@ -1,7 +1,7 @@
 """Cross-platform developer commands (Windows, macOS and Linux).
 
 Usage:
-    python tasks.py install   # editable install with dev dependencies
+    python tasks.py install   # editable install with dev and dbt dependencies
     python tasks.py lint      # ruff check + format check
     python tasks.py format    # auto-fix lint issues and format code
     python tasks.py test      # run pytest
@@ -27,7 +27,7 @@ def run(*module_args: str) -> None:
 
 
 def install() -> None:
-    run("pip", "install", "-e", ".[dev]")
+    run("pip", "install", "-e", ".[dev,dbt]")
 
 
 def lint() -> None:

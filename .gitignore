@@ -27,7 +27,8 @@ data/
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
-profiles.yml
+dbt/.user.yml
+# dbt/profiles.yml is committed on purpose: it holds no secrets (env vars + ADC).
 
 # Airflow
 airflow/logs/

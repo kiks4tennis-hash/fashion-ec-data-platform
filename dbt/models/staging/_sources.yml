@@ -1,0 +1,77 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Synthetic fashion e-commerce data loaded by `fashion_ec.load`. Loaded as-is from Parquet;
+      all timestamps are UTC. Column types are defined in `src/fashion_ec/schemas.py`.
+    database: "{{ env_var('GCP_PROJECT_ID') }}"
+    schema: "{{ env_var('BQ_RAW_DATASET', 'raw') }}"
+    tables:
+      - name: products
+        description: One row per SKU (style x color x size).
+        columns:
+          - name: sku
+          - name: style_id
+          - name: category
+          - name: color
+          - name: size
+          - name: season
+          - name: launch_date
+          - name: base_price
+          - name: initial_stock
+      - name: price_changes
+        description: Price history per style (launch price and markdowns).
+        columns:
+          - name: style_id
+          - name: effective_date
+          - name: price
+          - name: change_reason
+      - name: customers
+        description: One row per customer.
+        columns:
+          - name: customer_id
+          - name: signup_date
+          - name: region
+          - name: acquisition_channel
+      - name: orders
+        description: One row per order, including cancelled orders.
+        columns:
+          - name: order_id
+          - name: customer_id
+          - name: order_ts
+          - name: status
+          - name: payment_method
+          - name: shipping_fee
+      - name: order_items
+        description: One row per SKU on an order.
+        columns:
+          - name: order_item_id
+          - name: order_id
+          - name: sku
+          - name: quantity
+          - name: unit_price
+      - name: returns
+        description: One row per returned order line (full refund).
+        columns:
+          - name: return_id
+          - name: order_item_id
+          - name: return_ts
+          - name: reason
+          - name: refund_amount
+      - name: inventory_snapshots
+        description: End-of-day on-hand units per SKU and day.
+        columns:
+          - name: snapshot_date
+          - name: sku
+          - name: on_hand
+      - name: clickstream
+        description: Raw web events. There is no session id; sessions have to be derived.
+        columns:
+          - name: event_id
+          - name: event_ts
+          - name: anonymous_id
+          - name: customer_id
+          - name: event_type
+          - name: sku
+          - name: device
