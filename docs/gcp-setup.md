@@ -107,9 +107,9 @@ the [official sandbox documentation](https://cloud.google.com/bigquery/docs/sand
   also why partitioning is off: the synthetic data covers past dates, and partitions are said
   to expire by their date.
 - **10 GB storage and 1 TB of queries per month.** This project uses well under 1 GB.
-- **DML and streaming are reported as unsupported.** dbt `table` and `view` models use DDL
-  (`CREATE TABLE AS SELECT`), but `incremental` (merge) and `snapshot` rely on DML. Run the
-  check below before the dbt phase; the result decides how Phase 2 is built.
+- **DML and streaming are reported as unsupported** by third-party summaries. In the
+  author's project the DML check below succeeded (2026-11-05), so dbt `incremental` and
+  `snapshot` models are possible there; run the check on your own project before relying on it.
 - Dataproc (Spark) and Cloud Storage need billing, so Phase 4 needs a billing account.
 
 Check whether DML works in your project (it creates and removes a tiny table):

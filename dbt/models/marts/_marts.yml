@@ -1,0 +1,289 @@
+version: 2
+
+# Marts are the tables people query. Money is in yen (_jpy), dates are Japan-time business
+# dates (_on_jst) unless the column says otherwise, and cancelled orders never count as sales.
+
+models:
+  - name: dim_products
+    description: One row per SKU with its current list price.
+    columns:
+      - name: sku
+        description: Unique SKU code.
+        data_tests: [unique, not_null]
+      - name: style_id
+        description: Groups the color and size variants of one design.
+        data_tests: [not_null]
+      - name: category
+        description: Product category.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [tops, bottoms, outerwear, dresses, shoes, accessories]
+      - name: color
+        description: Color name.
+      - name: size
+        description: Size label. `F` means one size.
+      - name: season
+        description: Season of launch, for example `2026SS`.
+      - name: launch_date
+        description: First day the SKU can be sold.
+      - name: base_price_jpy
+        description: Launch list price in yen.
+        data_tests: [is_positive]
+      - name: initial_stock_units
+        description: Units in stock on the SKU's first day in the data.
+      - name: is_one_size
+        description: True for one-size items (accessories).
+        data_tests: [not_null]
+      - name: current_price_jpy
+        description: Current list price in yen, after any markdowns.
+        data_tests: [not_null, is_positive]
+      - name: current_discount_rate
+        description: Share of the launch price taken off today (0 = full price, 0.2 = 20% off).
+        data_tests:
+          - is_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: is_on_markdown
+        description: True when the current price is below the launch price.
+        data_tests: [not_null]
+
+  - name: dim_customers
+    description: One row per customer with lifetime sales. Cancelled orders do not count.
+    columns:
+      - name: customer_id
+        description: Unique customer id.
+        data_tests: [unique, not_null]
+      - name: signup_date
+        description: Day the customer registered.
+      - name: region
+        description: Home region in Japan.
+      - name: acquisition_channel
+        description: Marketing channel that brought the customer.
+      - name: completed_orders
+        description: Number of non-cancelled orders.
+        data_tests: [not_null, is_non_negative]
+      - name: first_order_on_jst
+        description: Business date of the first order. Null if the customer never ordered.
+      - name: last_order_on_jst
+        description: Business date of the latest order. Null if the customer never ordered.
+      - name: gross_sales_jpy
+        description: Yen spent on goods before returns (shipping fees excluded).
+        data_tests: [not_null, is_non_negative]
+      - name: refunded_jpy
+        description: Yen refunded for returned lines.
+        data_tests: [not_null, is_non_negative]
+      - name: net_sales_jpy
+        description: Gross sales minus refunds.
+        data_tests: [not_null, is_non_negative]
+      - name: is_repeat_customer
+        description: True for customers with two or more completed orders.
+        data_tests: [not_null]
+
+  - name: fct_sales_daily
+    description: >
+      Gross sales per Japan-time day and category, before returns. Cancelled orders are excluded.
+      An order with items from two categories counts once in each category.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [ordered_on_jst, category]
+    columns:
+      - name: ordered_on_jst
+        description: Business date of the order.
+        data_tests: [not_null]
+      - name: category
+        description: Product category.
+        data_tests: [not_null]
+      - name: order_count
+        description: Distinct orders with at least one line in the category.
+        data_tests: [is_positive]
+      - name: sold_units
+        description: Units sold.
+        data_tests: [is_positive]
+      - name: gross_sales_jpy
+        description: Yen sold before returns.
+        data_tests: [is_positive]
+
+  - name: fct_refunds_daily
+    description: >
+      Refunds by the day the return was registered (cash view), per reason. Compare with
+      `fct_returns_by_cohort`, which attributes returns to the month of the order.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [returned_on_jst, return_reason]
+    columns:
+      - name: returned_on_jst
+        description: Business date the return was registered.
+        data_tests: [not_null]
+      - name: return_reason
+        description: Reason given by the customer.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [size_too_small, size_too_large, not_as_expected, defective, changed_mind]
+      - name: return_count
+        description: Returned order lines.
+        data_tests: [is_positive]
+      - name: returned_units
+        description: Units returned.
+        data_tests: [is_positive]
+      - name: refunded_jpy
+        description: Yen refunded.
+        data_tests: [is_positive]
+
+  - name: fct_returns_by_cohort
+    description: >
+      Return rate by order month and category, in units. Returns arrive up to
+      `return_window_days` after the order, so recent months look better than they are; only
+      rows with `is_mature` are comparable.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [order_month, category]
+    columns:
+      - name: order_month
+        description: First day of the month the orders were placed in (Japan time).
+        data_tests: [not_null]
+      - name: category
+        description: Product category.
+        data_tests: [not_null]
+      - name: sold_units
+        description: Units sold in the cohort (cancelled orders excluded).
+        data_tests: [is_positive]
+      - name: returned_units
+        description: Units of the cohort returned so far.
+        data_tests: [is_non_negative]
+      - name: return_rate
+        description: Returned units divided by sold units.
+        data_tests:
+          - is_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: is_mature
+        description: True once the whole return window after the month has passed.
+        data_tests: [not_null]
+
+  - name: fct_sessions
+    description: One row per web session. Sessions are derived in `int_sessions`.
+    columns:
+      - name: session_id
+        description: Visitor id plus a running session number.
+        data_tests: [unique, not_null]
+      - name: anonymous_id
+        description: Browser/device id.
+        data_tests: [not_null]
+      - name: customer_id
+        description: Customer id when the visitor was logged in, otherwise null.
+      - name: device_type
+        description: Device class of the session.
+      - name: started_at
+        description: First event of the session (UTC).
+        data_tests: [not_null]
+      - name: ended_at
+        description: Last event of the session (UTC).
+        data_tests: [not_null]
+      - name: started_on_jst
+        description: Business date the session started, in Japan time.
+        data_tests: [not_null]
+      - name: duration_seconds
+        description: Seconds between the first and last event.
+        data_tests: [is_non_negative]
+      - name: page_views
+        description: Product page views in the session.
+        data_tests: [is_non_negative]
+      - name: add_to_carts
+        description: Add-to-cart events in the session.
+        data_tests: [is_non_negative]
+      - name: purchases
+        description: Purchase events in the session.
+        data_tests: [is_non_negative]
+      - name: is_converted
+        description: True when the session contains a purchase.
+        data_tests: [not_null]
+
+  - name: fct_funnel_daily
+    description: >
+      Conversion funnel per Japan-time day and device. Rates are null when the previous step
+      has no sessions.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [started_on_jst, device_type]
+    columns:
+      - name: started_on_jst
+        description: Business date the sessions started.
+        data_tests: [not_null]
+      - name: device_type
+        description: Device class.
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [mobile, desktop, tablet]
+      - name: sessions
+        description: Sessions that day on the device.
+        data_tests: [is_positive]
+      - name: sessions_with_view
+        description: Sessions with at least one product view.
+        data_tests: [is_non_negative]
+      - name: sessions_with_cart
+        description: Sessions with at least one add-to-cart.
+        data_tests: [is_non_negative]
+      - name: sessions_with_purchase
+        description: Sessions with at least one purchase.
+        data_tests: [is_non_negative]
+      - name: view_to_cart_rate
+        description: Sessions with a cart divided by sessions with a view.
+        data_tests:
+          - is_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: cart_to_purchase_rate
+        description: Sessions with a purchase divided by sessions with a cart.
+        data_tests:
+          - is_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+      - name: conversion_rate
+        description: Sessions with a purchase divided by all sessions.
+        data_tests:
+          - is_between:
+              arguments:
+                min_value: 0
+                max_value: 1
+
+  - name: fct_style_sell_through
+    description: >
+      Sell-through of each style in its first `sell_through_days` days: units sold (gross)
+      divided by the units in stock at the start. Use only rows with `is_complete`.
+    columns:
+      - name: style_id
+        description: Design (all colors and sizes).
+        data_tests: [unique, not_null]
+      - name: category
+        description: Product category.
+      - name: launch_date
+        description: First day the style can be sold.
+      - name: initial_units
+        description: Units in stock across all SKUs of the style on its first day in the data.
+        data_tests: [is_positive]
+      - name: sold_units_in_window
+        description: Units sold within the window after launch, before returns.
+        data_tests: [not_null, is_non_negative]
+      - name: sell_through_rate
+        description: >
+          Units sold in the window divided by initial units. Nothing caps it at 1, because the
+          synthetic demand does not depend on stock (in the default data it stays below 1).
+        data_tests: [is_non_negative]
+      - name: is_complete
+        description: >
+          True when the style launched inside the data and its whole window has passed, so the
+          rate is final and comparable.
+        data_tests: [not_null]

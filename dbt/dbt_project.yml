@@ -15,3 +15,19 @@ models:
     staging:
       +materialized: view
       +schema: staging
+    # intermediate: reusable joins and logic. Views, except where a model says otherwise.
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    # marts: the tables people query. Built as tables so dashboards do not recompute them.
+    marts:
+      +materialized: table
+      +schema: marts
+
+vars:
+  # A visitor's events belong to the same session until this many minutes pass without one.
+  session_gap_minutes: 30
+  # Returns arrive up to this many days after the order (the generator uses 3-30).
+  return_window_days: 30
+  # Window after launch used for the sell-through KPI.
+  sell_through_days: 30

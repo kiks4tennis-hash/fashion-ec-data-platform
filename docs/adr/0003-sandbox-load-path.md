@@ -30,8 +30,7 @@ clustering stays. The GCS path stays the default and remains the target for Phas
 
 - Phases 2 and 3 can proceed with no billing account and no cost risk.
 - Tables disappear after 60 days; re-running the loader recreates them.
-- **Open question for Phase 2:** if DML is not available, dbt `incremental` (merge) and
-  `snapshot` models cannot run in the sandbox. The setup guide has a one-minute check;
-  its result decides whether the price-history snapshot is built with dbt or with a
-  full-refresh table model, with the trade-off recorded in a later ADR.
+- **Resolved (2026-11-05):** the setup guide's DML check succeeded in the author's sandbox
+  project, so dbt `incremental` and `snapshot` models can run there despite what third-party
+  summaries say. Whether to use them is decided on the merits (see ADR 0005).
 - Spark on Dataproc (Phase 4) needs a billing account.
