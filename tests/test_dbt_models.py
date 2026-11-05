@@ -8,7 +8,6 @@ in CI, long before a query is billed.
 """
 
 import re
-from pathlib import Path
 
 import jinja2
 import pytest
@@ -18,10 +17,9 @@ from sqlglot.optimizer.annotate_types import annotate_types
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.schema import MappingSchema
 
+from dbt_render import MODELS_DIR, macro_source, model_files, render_sql
 from fashion_ec.schemas import TABLES
 
-DBT_DIR = Path(__file__).resolve().parents[1] / "dbt"
-MODELS_DIR = DBT_DIR / "models"
 PROJECT = "test-project"
 DIALECT = "bigquery"
 
@@ -31,23 +29,13 @@ REF = re.compile(r"ref\(\s*'([\w]+)'\s*\)")
 # --- rendering and analysis -------------------------------------------------
 
 
-def model_files() -> dict[str, Path]:
-    return {path.stem: path for path in sorted(MODELS_DIR.rglob("*.sql"))}
-
-
-def macro_source() -> str:
-    return "\n".join(path.read_text() for path in sorted((DBT_DIR / "macros").glob("*.sql")))
-
-
-def render(path: Path) -> str:
+def render(path):
     """Render a model like dbt would, with source() and ref() pointing at fixed names."""
-    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
-    env.globals.update(
-        source=lambda source, table: f"`{PROJECT}.{source}.{table}`",
+    return render_sql(
+        path,
         ref=lambda name: f"`{PROJECT}.dbt.{name}`",
-        config=lambda **kwargs: "",
+        source=lambda source, table: f"`{PROJECT}.{source}.{table}`",
     )
-    return env.from_string(macro_source() + path.read_text()).render().strip()
 
 
 def raw_schema() -> dict:

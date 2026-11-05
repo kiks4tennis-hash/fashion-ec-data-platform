@@ -29,6 +29,7 @@ dev = [
     "jinja2>=3.1",
     "pyyaml>=6.0",
     "sqlglot>=25.0",
+    "duckdb>=1.1",
 ]
 dbt = [
     "dbt-core>=1.10,<1.13",
@@ -41,6 +42,10 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+filterwarnings = [
+    # DuckDB's DataFrame export still uses a pandas argument that pandas 3 deprecates.
+    "ignore:The inplace keyword in DataFrame.drop",
+]
 markers = [
     "integration: tests that need external services (deselect with -m 'not integration')",
 ]

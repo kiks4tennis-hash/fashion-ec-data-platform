@@ -1,0 +1,121 @@
+version: 2
+
+models:
+  - name: int_price_periods
+    description: >
+      Price history as validity periods, built from the change log with a window function.
+      A price applies on `valid_from <= date < valid_to`; the current price has no `valid_to`.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [style_id, valid_from]
+    columns:
+      - name: style_id
+        description: Style the price applies to (all sizes and colors).
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: style_id
+      - name: valid_from
+        description: First day the price applies.
+        data_tests: [not_null]
+      - name: valid_to
+        description: First day the price no longer applies (exclusive). Null for the current price.
+      - name: price_jpy
+        description: List price in yen during the period.
+        data_tests: [is_positive]
+      - name: change_reason
+        description: Why the price changed (launch or markdown).
+      - name: is_current
+        description: True for the latest period of the style.
+        data_tests: [not_null]
+
+  - name: int_order_items_enriched
+    description: >
+      One row per order line with its order, product and return. Cancelled orders are kept and
+      flagged; revenue models must filter on `is_cancelled`.
+    columns:
+      - name: order_item_id
+        description: Unique order line id.
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: Order the line belongs to.
+        data_tests: [not_null]
+      - name: customer_id
+        description: Customer who placed the order.
+        data_tests: [not_null]
+      - name: ordered_at
+        description: When the order was placed (UTC).
+      - name: ordered_on_jst
+        description: Business date of the order in Japan time.
+        data_tests: [not_null]
+      - name: is_cancelled
+        description: True when the order was cancelled.
+        data_tests: [not_null]
+      - name: sku
+        description: Product sold.
+      - name: style_id
+        description: Style of the product.
+      - name: category
+        description: Product category.
+      - name: color
+        description: Product color.
+      - name: size
+        description: Product size label.
+      - name: season
+        description: Season of launch.
+      - name: launch_date
+        description: First day the SKU could be sold.
+      - name: sold_units
+        description: Units on the line.
+        data_tests: [is_positive]
+      - name: unit_price_jpy
+        description: List price in yen on the order date.
+      - name: line_amount_jpy
+        description: Units times unit price, in yen, before returns.
+        data_tests: [is_positive]
+      - name: is_returned
+        description: True when the line was returned (the whole line is refunded).
+        data_tests: [not_null]
+      - name: returned_at
+        description: When the return was registered (UTC). Null when not returned.
+      - name: returned_on_jst
+        description: Business date of the return in Japan time. Null when not returned.
+      - name: return_reason
+        description: Reason given by the customer. Null when not returned.
+      - name: refund_amount_jpy
+        description: Refunded yen; 0 when not returned.
+        data_tests: [is_non_negative]
+
+  - name: int_sessions
+    description: >
+      Every clickstream event with a derived session id. A session ends when the visitor is
+      inactive for more than `session_gap_minutes` (30 by default). Built as a table because the
+      window functions over all events are the expensive step.
+    columns:
+      - name: event_id
+        description: Unique event id.
+        data_tests: [unique, not_null]
+      - name: anonymous_id
+        description: Browser/device id.
+        data_tests: [not_null]
+      - name: customer_id
+        description: Customer id when the visitor was logged in, otherwise null.
+      - name: event_at
+        description: When the event happened (UTC).
+      - name: event_on_jst
+        description: Business date of the event in Japan time.
+      - name: event_type
+        description: Funnel step (page_view, add_to_cart, purchase).
+      - name: sku
+        description: Product the event is about.
+      - name: device_type
+        description: Device class.
+      - name: is_session_start
+        description: True for the first event of a session.
+        data_tests: [not_null]
+      - name: session_id
+        description: Visitor id plus a running session number, for example `v00000042-3`.
+        data_tests: [not_null]

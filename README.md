@@ -58,7 +58,7 @@ flowchart LR
 .
 ├── src/fashion_ec/     # Python package: data generation, ingestion, utilities
 ├── tests/              # pytest tests
-├── dbt/                # dbt project: sources, staging models, tests
+├── dbt/                # dbt project: staging, intermediate, marts, tests
 ├── airflow/            # DAGs and Airflow config (Phase 3)
 ├── spark/              # PySpark jobs (Phase 4)
 ├── infra/              # Infrastructure as code (Phase 5)
@@ -135,10 +135,10 @@ and clustering are defined once in `src/fashion_ec/schemas.py`.
 
 ## Transform with dbt
 
-The `dbt/` project turns the raw tables into tested, documented models. Layer 1 (staging:
-one view per raw table, renamed columns, Japan-time business dates, 68 data tests) is in
-place; intermediate models and marts come next. Details and run instructions:
-[`docs/dbt.md`](docs/dbt.md).
+The `dbt/` project turns the raw tables into tested, documented models: staging views,
+intermediate logic (price validity periods, sessions) and eight marts (sales, refunds, return
+cohorts, sessions, funnel, customers, products, sell-through), with 165 data tests.
+Details and run instructions: [`docs/dbt.md`](docs/dbt.md).
 
 ```powershell
 $env:GCP_PROJECT_ID = "YOUR_PROJECT_ID"
@@ -172,6 +172,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 | [0002](docs/adr/0002-gcs-staging-and-load-jobs.md) | Stage files in GCS and ingest with BigQuery load jobs |
 | [0003](docs/adr/0003-sandbox-load-path.md) | Add a direct-load path for the BigQuery sandbox (no billing) |
 | [0004](docs/adr/0004-dbt-staging-conventions.md) | dbt staging conventions and checks that run without a warehouse |
+| [0005](docs/adr/0005-intermediate-and-mart-design.md) | Price periods instead of a snapshot, session rule, maturity flags, DuckDB cross-checks |
 
 ## Roadmap
 
@@ -180,7 +181,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 - [x] **Phase 1** — CI: lint and tests on every PR (Linux and Windows, Python 3.11 and 3.12)
 - [x] **Phase 2a** — Load raw data into BigQuery through GCS
 - [x] **Phase 2b-1** — dbt staging layer, tests, static checks in CI
-- [ ] **Phase 2b-2** — dbt intermediate models, marts, price-history snapshot
+- [x] **Phase 2b-2** — dbt intermediate models and marts, executed and cross-checked in CI
 - [ ] **Phase 3** — Airflow DAGs with backfill and retries
 - [ ] **Phase 4** — Spark clickstream processing and cost comparison with BigQuery SQL
 - [ ] **Phase 5** — CD, dashboard, demo video
