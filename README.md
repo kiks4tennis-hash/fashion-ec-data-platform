@@ -66,6 +66,7 @@ flowchart LR
 │   ├── adr/            # Architecture Decision Records
 │   ├── data-model.md   # Source tables and intentional data quirks
 │   ├── dbt.md          # Running and extending the dbt project
+│   ├── ingestion.md    # Daily extract and idempotent load
 │   └── gcp-setup.md    # One-time GCP setup (auth, budget alert, bucket)
 ├── .github/workflows/  # CI/CD (added in Phase 1, extended later)
 ├── pyproject.toml      # Package, ruff and pytest configuration
@@ -146,6 +147,18 @@ cd dbt
 dbt build --profiles-dir .
 ```
 
+## Daily ingestion
+
+`fashion_ec.extract` cuts one Japan-time day out of the generated data and
+`fashion_ec.ingest` loads it into BigQuery with a per-day `MERGE`, so reruns and backfills are
+safe. Details: [`docs/ingestion.md`](docs/ingestion.md).
+
+```powershell
+python -m fashion_ec.generate --out data/source
+python -m fashion_ec.extract --from 2026-01-01 --to 2026-01-07
+python -m fashion_ec.ingest --project YOUR_PROJECT_ID --from 2026-01-01 --to 2026-01-07
+```
+
 ## Windows notes
 
 - **Airflow** does not run natively on Windows. From Phase 3, run it with
@@ -173,6 +186,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 | [0003](docs/adr/0003-sandbox-load-path.md) | Add a direct-load path for the BigQuery sandbox (no billing) |
 | [0004](docs/adr/0004-dbt-staging-conventions.md) | dbt staging conventions and checks that run without a warehouse |
 | [0005](docs/adr/0005-intermediate-and-mart-design.md) | Price periods instead of a snapshot, session rule, maturity flags, DuckDB cross-checks |
+| [0006](docs/adr/0006-daily-incremental-ingestion.md) | Daily ingestion with per-day MERGE replacement |
 
 ## Roadmap
 
@@ -182,6 +196,7 @@ Key decisions are recorded as ADRs in [`docs/adr/`](docs/adr/).
 - [x] **Phase 2a** — Load raw data into BigQuery through GCS
 - [x] **Phase 2b-1** — dbt staging layer, tests, static checks in CI
 - [x] **Phase 2b-2** — dbt intermediate models and marts, executed and cross-checked in CI
+- [x] **Phase 2c** — Daily extract and idempotent per-day load
 - [ ] **Phase 3** — Airflow DAGs with backfill and retries
 - [ ] **Phase 4** — Spark clickstream processing and cost comparison with BigQuery SQL
 - [ ] **Phase 5** — CD, dashboard, demo video
